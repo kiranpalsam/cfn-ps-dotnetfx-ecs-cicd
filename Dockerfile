@@ -3,12 +3,12 @@ WORKDIR /app
 
 # copy csproj and restore as distinct layers
 COPY SampleWebApplication/*.sln .
-COPY SampleWebApplication/aspnetmvcapp/*.csproj ./aspnetmvcapp/
-COPY SampleWebApplication/aspnetmvcapp/*.config ./aspnetmvcapp/
+COPY SampleWebApplication/MVC5App/*.csproj ./aspnetmvcapp/
+COPY SampleWebApplication/MVC5App/*.config ./aspnetmvcapp/
 RUN nuget restore
 
 # copy everything else and build app
-COPY SampleWebApplication/aspnetmvcapp/. ./aspnetmvcapp/
+COPY SampleWebApplication/MVC5App/. ./aspnetmvcapp/
 WORKDIR /app/aspnetmvcapp
 RUN msbuild /p:Configuration=Release -r:False
 
