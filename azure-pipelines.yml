@@ -1,0 +1,78 @@
+trigger:
+- main
+
+pool:
+  vmImage: windows-2019
+
+stages:
+- stage: Build
+  jobs:
+  - job: BuildandPushToECR
+    displayName: Build
+    pool:
+      vmImage: windows-2019
+    steps:
+    - script: echo "Build started at $(date)"
+    - task: Docker@2
+      name: BuildDockerImage
+      displayName: Build an image
+      inputs:
+        command: build
+        dockerfile: '$(Build.SourcesDirectory)/DockerFile'
+        tags: |
+          "agency/app:$(Build.BuildNumber)"
+        arguments: -t "agency/app:$(Build.BuildNumber)"
+    - task: ECRPushImage@1
+      name: ECRPush
+      displayName: Push to ECR
+      inputs:
+        awsCredentials: 'AzureDevOpsAwsService'
+        regionName: 'us-east-1'
+        imageSource: 'imagename'
+        sourceImageName: 'agency/app'
+        sourceImageTag: '$(Build.BuildNumber)'
+        repositoryName: 'agency/app'
+        pushTag: '$(Build.BuildNumber)'
+        outputVariable: 'APP_IMAGE_URI'
+
+- stage: Deploy
+  dependsOn: Build
+  jobs:
+  - job: UpdateImageAndDeploy
+    displayName: UpdateImageAndDeploy
+    pool:
+      vmImage: ubuntu-latest
+    variables:
+      IMAGE_URI : "$(OPS_ACCOUNT_NUMBER).dkr.ecr.us-east-1.amazonaws.com/agency/app:$(Build.BuildNumber)"
+    steps:
+    - checkout: none
+    - task: AWSShellScript@1
+      name: RegisterNewTaskDefinition
+      displayName: Update Image URI
+      inputs:
+        awsCredentials: 'AzureDevOpsAwsService'
+        regionName: 'us-east-1'
+        scriptType: 'inline'
+        inlineScript: |
+          # You can write your script inline here
+          echo $(IMAGE_URI)
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition "$(APP_ECS_TASK_DEFINITION_NAME)" --region "$AWS_DEFAULT_REGION")
+          NEW_TASK_DEFINTIION=$(echo $TASK_DEFINITION | jq --arg IMAGE "$(IMAGE_URI)" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities) | del(.registeredBy) | del(.registeredAt)')
+          NEW_TASK_INFO=$(aws ecs register-task-definition --region "$AWS_DEFAULT_REGION" --cli-input-json "$NEW_TASK_DEFINTIION")
+          NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+          echo "##vso[task.setvariable variable=APP_TASK_REVISION;]$NEW_REVISION"
+        failOnStandardError: true
+    
+    - task: AWSShellScript@1
+      name: DeployECS
+      displayName: Deploy to ECS
+      inputs:
+        awsCredentials: 'AzureDevOpsAwsService'
+        regionName: 'us-east-1'
+        scriptType: 'inline'
+        inlineScript: |
+          # You can write your script inline here
+          ECS_UPDATE_SERVICE=$(aws ecs update-service --cluster $(APP_ECS_CLUSTER) --service $(APP_ECS_SERVICE_NAME) --task-definition $(APP_ECS_TASK_DEFINITION_NAME):$(APP_TASK_REVISION) )
+          ECS_SERVICE_STATUS=$(aws ecs wait services-stable --cluster $(APP_ECS_CLUSTER) --service $(APP_ECS_SERVICE_NAME))
+          echo $ECS_SERVICE_STATUS
+        failOnStandardError: true
