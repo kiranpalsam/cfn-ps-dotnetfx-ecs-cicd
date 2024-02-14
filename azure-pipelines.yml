@@ -74,5 +74,6 @@ stages:
           # You can write your script inline here
           ECS_UPDATE_SERVICE=$(aws ecs update-service --cluster $(APP_ECS_CLUSTER) --service $(APP_ECS_SERVICE_NAME) --task-definition $(APP_ECS_TASK_DEFINITION_NAME):$(APP_TASK_REVISION) )
           ECS_SERVICE_STATUS=$(aws ecs wait services-stable --cluster $(APP_ECS_CLUSTER) --service $(APP_ECS_SERVICE_NAME))
+          ECS_SERVICE_STATUS=$(aws ecs wait services-stable --cluster $(APP_ECS_CLUSTER) --service $(APP_ECS_SERVICE_NAME))
           echo $ECS_SERVICE_STATUS
-        #failOnStandardError: true
+        failOnStandardError: true
