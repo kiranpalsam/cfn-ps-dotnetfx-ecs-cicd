@@ -26,7 +26,7 @@ stages:
       name: ECRPush
       displayName: Push to ECR
       inputs:
-        awsCredentials: 'AzureDevOpsAwsService'
+        awsCredentials: 'AzureAws'
         regionName: 'us-east-1'
         imageSource: 'imagename'
         sourceImageName: 'agency/app'
@@ -50,7 +50,7 @@ stages:
       name: RegisterNewTaskDefinition
       displayName: Update Image URI
       inputs:
-        awsCredentials: 'AzureDevOpsAwsService'
+        awsCredentials: 'AzureAws'
         regionName: 'us-east-1'
         scriptType: 'inline'
         inlineScript: |
@@ -67,7 +67,7 @@ stages:
       name: DeployECS
       displayName: Deploy to ECS
       inputs:
-        awsCredentials: 'AzureDevOpsAwsService'
+        awsCredentials: 'AzureAws'
         regionName: 'us-east-1'
         scriptType: 'inline'
         inlineScript: |
