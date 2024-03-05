@@ -1,0 +1,1038 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "",
+    "Parameters": {
+        "ECSClusterName": {
+            "Type": "String",
+            "Description": "Specifies the ECS Cluster Name with which the resources would be associated",
+            "Default": "ado-ecs-fargate-cluster"
+        },
+        "Password": {
+            "Type": "String",
+            "Description": "Specifies the ECS Cluster Name with which the resources would be associated",
+            "Default": "ChangeP@ssowrd@123"
+        },
+        "Image": {
+            "Type": "String",
+            "Description": "Specifies the ECS Cluster Name with which the resources would be associated",
+            "Default": "545117064741.dkr.ecr.us-east-1.amazonaws.com/agency/app:20240202.10"
+        }
+    },
+    "Mappings": {
+        "RegionToAMIID": {
+            "eu-west-2": {
+                "A2CSource": "ami-03e969fd56ea76acb",
+                "A2CWorker": "ami-0bdd1dc04f8135b4b"
+            },
+            "ap-southeast-1": {
+                "A2CSource": "ami-039ba649ead5b0ecf",
+                "A2CWorker": "ami-0617f7ed92d5ffcb4"
+            },
+            "us-east-1": {
+                "A2CSource": "ami-0a88de54494584ebf",
+                "A2CWorker": "ami-0b87158ab3291a9b6"
+            },
+            "us-west-2": {
+                "A2CSource": "ami-02b2da15caf7d563b",
+                "A2CWorker": "ami-040bfe862f02dad9f"
+            }
+        }
+    },
+    "Resources": {
+        "App2containerVPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+                "CidrBlock": "10.11.16.0/23",
+                "EnableDnsSupport": "true",
+                "EnableDnsHostnames": "true",
+                "InstanceTenancy": "default",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "ado-aws-ecs-vpc"
+                    }
+                ]
+            }
+        },
+        "Pub1": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        "0",
+                        {
+                            "Fn::GetAZs": ""
+                        }
+                    ]
+                },
+                "CidrBlock": "10.11.16.0/26",
+                "MapPublicIpOnLaunch": true,
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "ado-aws-ecs-Public-Subnet-1"
+                    }
+                ]
+            }
+        },
+        "Pub2": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        "1",
+                        {
+                            "Fn::GetAZs": ""
+                        }
+                    ]
+                },
+                "CidrBlock": "10.11.16.64/26",
+                "MapPublicIpOnLaunch": true,
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "ado-aws-ecs-Public-Subnet-2"
+                    }
+                ]
+            }
+        },
+        "Pri1": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        "0",
+                        {
+                            "Fn::GetAZs": ""
+                        }
+                    ]
+                },
+                "CidrBlock": "10.11.16.128/26",
+                "MapPublicIpOnLaunch": false,
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "ado-aws-ecs-Private-Subnet-1"
+                    }
+                ]
+            }
+        },
+        "Pri2": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        "1",
+                        {
+                            "Fn::GetAZs": ""
+                        }
+                    ]
+                },
+                "CidrBlock": "10.11.16.192/26",
+                "MapPublicIpOnLaunch": false,
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "ado-aws-ecs-Private-Subnet-2"
+                    }
+                ]
+            }
+        },
+        "PubRT": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "ado-aws-ecs-Public-RouteTable"
+                    }
+                ]
+            }
+        },
+        "PriRT": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "ado-aws-ecs-Private-RouteTable"
+                    }
+                ]
+            }
+        },
+        "PubRoute": {
+            "Type": "AWS::EC2::Route",
+            "Properties": {
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "DevIg"
+                },
+                "RouteTableId": {
+                    "Ref": "PubRT"
+                }
+            }
+        },
+        "PriRoute": {
+            "Type": "AWS::EC2::Route",
+            "Properties": {
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "NatGatewayId": {
+                    "Ref": "NatGateway"
+                },
+                "RouteTableId": {
+                    "Ref": "PriRT"
+                }
+            }
+        },
+        "DevIg": {
+            "Type": "AWS::EC2::InternetGateway",
+            "Properties": {
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "ado-aws-ecs-InternetGateway"
+                    }
+                ]
+            }
+        },
+        "AttachIG": {
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "InternetGatewayId": {
+                    "Ref": "DevIg"
+                }
+            }
+        },
+        "Pub1RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "Pub1"
+                },
+                "RouteTableId": {
+                    "Ref": "PubRT"
+                }
+            }
+        },
+        "Pub2RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "Pub2"
+                },
+                "RouteTableId": {
+                    "Ref": "PubRT"
+                }
+            }
+        },
+        "Pri1RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "Pri1"
+                },
+                "RouteTableId": {
+                    "Ref": "PriRT"
+                }
+            }
+        },
+        "Pri2RouteTableAssociation": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "Pri2"
+                },
+                "RouteTableId": {
+                    "Ref": "PriRT"
+                }
+            }
+        },
+        "MyECSRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ecs-tasks.amazonaws.com",
+                                    "ecs.amazonaws.com",
+                                    "ec2.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "RoleName": "ecsTaskExecutionRole",
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
+                    "arn:aws:iam::aws:policy/AmazonECS_FullAccess",
+                    "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+                ]
+            }
+        },
+        "AzureDevOpsUser": {
+            "Type": "AWS::IAM::User",
+            "Properties": {
+                "UserName": "AzureDevOpsUser",
+                "LoginProfile": {
+                    "Password": {
+                        "Ref": "Password"
+                    }
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/AdministratorAccess"
+                ]
+            }
+        },
+        "PolicyForAzureDevOpsPipelines": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "AzureDevOpsAWS",
+                            "Effect": "Allow",
+                            "Action": [
+                                "ecr:DescribeRepositories",
+                                "ecr:GetAuthorizationToken",
+                                "ecr:UploadLayerPart",
+                                "ecr:PutImage",
+                                "ecr:CompleteLayerUpload",
+                                "ecr:InitiateLayerUpload",
+                                "ecr:BatchCheckLayerAvailability",
+                                "ecr:BatchGetImage",
+                                "ecr:GetDownloadUrlForLayer",
+                                "ecs:UpdateService",
+                                "ecs:DescribeTaskDefinition",
+                                "ecs:RegisterTaskDefinition",
+                                "iam:PassRole",
+                                "ecs:DescribeServices",
+                                "eks:DescribeCluster"
+                            ],
+                            "Resource": "*"
+                        }
+                    ]
+                },
+                "PolicyName": "PolicyForAzureDevOpsPipelines",
+                "Users": [
+                    "AzureDevOpsUser"
+                ]
+            }
+        },
+        "CloudwatchLogsPolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "autoscaling:Describe*",
+                                "cloudwatch:*",
+                                "logs:*",
+                                "sns:*",
+                                "iam:GetPolicy",
+                                "iam:GetPolicyVersion",
+                                "iam:GetRole",
+                                "oam:ListSinks"
+                            ],
+                            "Resource": "*"
+                        }
+                    ]
+                },
+                "PolicyName": "cloudwatch-logs-policy",
+                "Roles": [
+                    "ecsTaskExecutionRole"
+                ]
+            }
+        },
+        "A2CSourceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ec2.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+                ],
+                "RoleName": "A2CSourceRole"
+            }
+        },
+        "A2CRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ec2.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
+                    "arn:aws:iam::aws:policy/SecretsManagerReadWrite",
+                    "arn:aws:iam::aws:policy/AmazonECS_FullAccess",
+                    "arn:aws:iam::aws:policy/AdministratorAccess"
+                ],
+                "RoleName": "A2CRole"
+            }
+        },
+        "A2CInstanceProfile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                "InstanceProfileName": "A2CInstanceProfile",
+                "Roles": [
+                    {
+                        "Ref": "A2CRole"
+                    }
+                ]
+            }
+        },
+        "Ec2messagesEndpoint": {
+            "UpdateReplacePolicy": "Retain",
+            "Type": "AWS::EC2::VPCEndpoint",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "PrivateDnsEnabled": true,
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "RouteTableIds": [],
+                "ServiceName": "com.amazonaws.us-east-1.ec2messages",
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Resource": "*",
+                            "Action": "*",
+                            "Effect": "Allow",
+                            "Principal": "*"
+                        }
+                    ]
+                },
+                "VpcEndpointType": "Interface",
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "WindowsServerSg"
+                    }
+                ],
+                "SubnetIds": [
+                    {
+                        "Ref": "Pri1"
+                    },
+                    {
+                        "Ref": "Pri2"
+                    }
+                ]
+            }
+        },
+        "DockerEcrEndpoint": {
+            "UpdateReplacePolicy": "Retain",
+            "Type": "AWS::EC2::VPCEndpoint",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "PrivateDnsEnabled": true,
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "RouteTableIds": [],
+                "ServiceName": "com.amazonaws.us-east-1.ecr.dkr",
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Resource": "*",
+                            "Action": "*",
+                            "Effect": "Allow",
+                            "Principal": "*"
+                        }
+                    ]
+                },
+                "VpcEndpointType": "Interface",
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "WindowsServerSg"
+                    }
+                ],
+                "SubnetIds": [
+                    {
+                        "Ref": "Pri1"
+                    },
+                    {
+                        "Ref": "Pri2"
+                    }
+                ]
+            }
+        },
+        "SsmEndpoint": {
+            "UpdateReplacePolicy": "Retain",
+            "Type": "AWS::EC2::VPCEndpoint",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "PrivateDnsEnabled": true,
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "RouteTableIds": [],
+                "ServiceName": "com.amazonaws.us-east-1.ssm",
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Resource": "*",
+                            "Action": "*",
+                            "Effect": "Allow",
+                            "Principal": "*"
+                        }
+                    ]
+                },
+                "VpcEndpointType": "Interface",
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "WindowsServerSg"
+                    }
+                ],
+                "SubnetIds": [
+                    {
+                        "Ref": "Pri1"
+                    },
+                    {
+                        "Ref": "Pri2"
+                    }
+                ]
+            }
+        },
+        "SsmMessagesEndpoint": {
+            "UpdateReplacePolicy": "Retain",
+            "Type": "AWS::EC2::VPCEndpoint",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "PrivateDnsEnabled": true,
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "RouteTableIds": [],
+                "ServiceName": "com.amazonaws.us-east-1.ssmmessages",
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Resource": "*",
+                            "Action": "*",
+                            "Effect": "Allow",
+                            "Principal": "*"
+                        }
+                    ]
+                },
+                "VpcEndpointType": "Interface",
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "WindowsServerSg"
+                    }
+                ],
+                "SubnetIds": [
+                    {
+                        "Ref": "Pri1"
+                    },
+                    {
+                        "Ref": "Pri2"
+                    }
+                ]
+            }
+        },
+        "EcrApiEndpoint": {
+            "UpdateReplacePolicy": "Retain",
+            "Type": "AWS::EC2::VPCEndpoint",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "PrivateDnsEnabled": true,
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "RouteTableIds": [],
+                "ServiceName": "com.amazonaws.us-east-1.ecr.api",
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Resource": "*",
+                            "Action": "*",
+                            "Effect": "Allow",
+                            "Principal": "*"
+                        }
+                    ]
+                },
+                "VpcEndpointType": "Interface",
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "WindowsServerSg"
+                    }
+                ],
+                "SubnetIds": [
+                    {
+                        "Ref": "Pri1"
+                    },
+                    {
+                        "Ref": "Pri2"
+                    }
+                ]
+            }
+        },
+        "ElasticIPAddress": {
+            "UpdateReplacePolicy": "Retain",
+            "Type": "AWS::EC2::EIP",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "PublicIpv4Pool": "amazon",
+                "Domain": "vpc",
+                "Tags": [],
+                "NetworkBorderGroup": "us-east-1"
+            }
+        },
+        "NatGateway": {
+            "UpdateReplacePolicy": "Retain",
+            "Type": "AWS::EC2::NatGateway",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "Pub1"
+                },
+                "ConnectivityType": "public",
+                "Tags": [
+                    {
+                        "Value": "nat-gateway",
+                        "Key": "Name"
+                    }
+                ],
+                "AllocationId": {
+                    "Fn::GetAtt": [
+                        "ElasticIPAddress",
+                        "AllocationId"
+                    ]
+                }
+            }
+        },
+        "ECRRepo": {
+            "Type": "AWS::ECR::Repository",
+            "Properties": {
+                "RepositoryName": "agency/app"
+            }
+        },
+        "dotnettaskDefenition": {
+            "Type": "AWS::ECS::TaskDefinition",
+            "Properties": {
+                "TaskRoleArn": {
+                    "Ref": "MyECSRole"
+                },
+                "InferenceAccelerators": [],
+                "Memory": "2048",
+                "PlacementConstraints": [],
+                "Cpu": "1024",
+                "RequiresCompatibilities": [
+                    "FARGATE"
+                ],
+                "NetworkMode": "awsvpc",
+                "ExecutionRoleArn": {
+                    "Ref": "MyECSRole"
+                },
+                "RuntimePlatform": {
+                    "OperatingSystemFamily": "WINDOWS_SERVER_2019_FULL",
+                    "CpuArchitecture": "X86_64"
+                },
+                "Volumes": [],
+                "ContainerDefinitions": [
+                    {
+                        "ExtraHosts": [],
+                        "Secrets": [],
+                        "VolumesFrom": [],
+                        "Cpu": 0,
+                        "EntryPoint": [],
+                        "DnsServers": [],
+                        "Image": {
+                            "Ref": "Image"
+                        },
+                        "Essential": true,
+                        "ResourceRequirements": [],
+                        "EnvironmentFiles": [],
+                        "Name": "dotnetapp",
+                        "MountPoints": [],
+                        "DependsOn": [],
+                        "DockerLabels": {},
+                        "PortMappings": [
+                            {
+                                "ContainerPort": 80,
+                                "AppProtocol": "http",
+                                "Protocol": "tcp",
+                                "HostPort": 80,
+                                "Name": "dotnetapp-80-tcp"
+                            }
+                        ],
+                        "DockerSecurityOptions": [],
+                        "SystemControls": [],
+                        "Command": [],
+                        "DnsSearchDomains": [],
+                        "Environment": [],
+                        "Links": [],
+                        "CredentialSpecs": [],
+                        "Ulimits": []
+                    }
+                ],
+                "Family": "dotnet-task",
+                "Tags": []
+            }
+        },
+        "ECSCluster": {
+            "Type": "AWS::ECS::Cluster",
+            "Properties": {
+                "ClusterName": {
+                    "Ref": "ECSClusterName"
+                },
+                "CapacityProviders": [
+                    "FARGATE",
+                    "FARGATE_SPOT"
+                ],
+                "ClusterSettings": [
+                    {
+                        "Name": "containerInsights",
+                        "Value": "disabled"
+                    }
+                ],
+                "Configuration": {
+                    "ExecuteCommandConfiguration": {
+                        "Logging": "DEFAULT"
+                    }
+                },
+                "ServiceConnectDefaults": {
+                    "Namespace": "ado-ecs-fargate-cluster"
+                },
+                "Tags": []
+            }
+        },
+        "ECSService": {
+            "Type": "AWS::ECS::Service",
+            "Properties": {
+                "Cluster": {
+                    "Ref": "ECSCluster"
+                },
+                "CapacityProviderStrategy": [
+                    {
+                        "CapacityProvider": "FARGATE",
+                        "Base": 0,
+                        "Weight": 1
+                    }
+                ],
+                "TaskDefinition": {
+                    "Ref": "dotnettaskDefenition"
+                },
+                "ServiceName": "dontnetapp-service",
+                "SchedulingStrategy": "REPLICA",
+                "DesiredCount": 1,
+                "LoadBalancers": [
+                    {
+                        "ContainerName": "dotnetapp",
+                        "ContainerPort": 80,
+                        "LoadBalancerName": {
+                            "Ref": "AWS::NoValue"
+                        },
+                        "TargetGroupArn": {
+                            "Ref": "TargetGroup"
+                        }
+                    }
+                ],
+                "NetworkConfiguration": {
+                    "AwsvpcConfiguration": {
+                        "AssignPublicIp": "ENABLED",
+                        "SecurityGroups": [
+                            {
+                                "Ref": "SecurityGroup"
+                            }
+                        ],
+                        "Subnets": [
+                            {
+                                "Ref": "Pub1"
+                            },
+                            {
+                                "Ref": "Pub2"
+                            }
+                        ]
+                    }
+                },
+                "PlatformVersion": "1.0.0",
+                "DeploymentConfiguration": {
+                    "MaximumPercent": 200,
+                    "MinimumHealthyPercent": 100,
+                    "DeploymentCircuitBreaker": {
+                        "Enable": true,
+                        "Rollback": true
+                    }
+                },
+                "DeploymentController": {
+                    "Type": "ECS"
+                },
+                "ServiceConnectConfiguration": {
+                    "Enabled": false
+                },
+                "Tags": [],
+                "EnableECSManagedTags": true
+            },
+            "DependsOn": [
+                "Listener"
+            ]
+        },
+        "WindowsServerSg": {
+            "UpdateReplacePolicy": "Retain",
+            "Type": "AWS::EC2::SecurityGroup",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "GroupDescription": "launch-wizard-1 created 2024-02-26T21:41:50.086Z",
+                "GroupName": "windows-server-sg",
+                "VpcId": {
+                    "Ref"
+                },
+                "SecurityGroupIngress": [
+                    {
+                        "CidrIp": "0.0.0.0/0",
+                        "IpProtocol": "-1"
+                    },
+                    {
+                        "CidrIp": "0.0.0.0/0",
+                        "IpProtocol": "tcp",
+                        "FromPort": 3389,
+                        "ToPort": 3389
+                    }
+                ],
+                "SecurityGroupEgress": [
+                    {
+                        "CidrIp": "0.0.0.0/0",
+                        "IpProtocol": "-1"
+                    }
+                ]
+            }
+        },
+        "SecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "ado-ecs-fargate-cluster-dotnetapp-sg",
+                "GroupName": "ado-ecs-fargate-cluster-dotnetapp-sg",
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                },
+                "SecurityGroupIngress": [
+                    {
+                        "FromPort": 80,
+                        "ToPort": 80,
+                        "IpProtocol": "tcp",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "FromPort": 80,
+                        "ToPort": 80,
+                        "IpProtocol": "tcp",
+                        "CidrIpv6": "::/0"
+                    },
+                    {
+                        "FromPort": 443,
+                        "ToPort": 443,
+                        "IpProtocol": "tcp",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "FromPort": 443,
+                        "ToPort": 443,
+                        "IpProtocol": "tcp",
+                        "CidrIpv6": "::/0"
+                    }
+                ]
+            }
+        },
+        "LoadBalancer": {
+            "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "Properties": {
+                "Type": "application",
+                "Name": "ado-ecs-fargate-dotnetapp-alb",
+                "SecurityGroups": [
+                    {
+                        "Ref": "SecurityGroup"
+                    }
+                ],
+                "Subnets": [
+                    {
+                        "Ref": "Pub1"
+                    },
+                    {
+                        "Ref": "Pub2"
+                    }
+                ]
+            }
+        },
+        "TargetGroup": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "Properties": {
+                "HealthCheckPath": "/",
+                "Name": "ado-ecs-fargate-dotnetapp-tg",
+                "Port": 80,
+                "Protocol": "HTTP",
+                "TargetType": "ip",
+                "HealthCheckProtocol": "HTTP",
+                "VpcId": {
+                    "Ref": "App2containerVPC"
+                }
+            }
+        },
+        "Listener": {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "DefaultActions": [
+                    {
+                        "Type": "forward",
+                        "TargetGroupArn": {
+                            "Ref": "TargetGroup"
+                        }
+                    }
+                ],
+                "LoadBalancerArn": {
+                    "Ref": "LoadBalancer"
+                },
+                "Port": 80,
+                "Protocol": "HTTP"
+            }
+        }
+    },
+    "Outputs": {
+        "StackName": {
+            "Description": "Name of the stack",
+            "Value": {
+                "Ref": "AWS::StackName"
+            }
+        },
+        "VPCId": {
+            "Description": "Dev VPC",
+            "Value": {
+                "Ref": "App2containerVPC"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-VPC"
+                }
+            }
+        },
+        "PublicSubnet1": {
+            "Description": "Public subnet 1 id",
+            "Value": {
+                "Ref": "Pub1"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-Public-Subnet-1"
+                }
+            }
+        },
+        "PublicSubnet2": {
+            "Description": "Public subnet 2 id",
+            "Value": {
+                "Ref": "Pub2"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-Public-Subnet-2"
+                }
+            }
+        },
+        "PrivateSubnet1": {
+            "Description": "Private subnet 1 id",
+            "Value": {
+                "Ref": "Pri1"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-Private-Subnet-1"
+                }
+            }
+        },
+        "PrivateSubnet2": {
+            "Description": "Private subnet 2 id",
+            "Value": {
+                "Ref": "Pri2"
+            },
+            "Export": {
+                "Name": {
+                    "Fn::Sub": "${AWS::StackName}-Private-Subnet-2"
+                }
+            }
+        },
+        "ECSCluster": {
+            "Description": "The created cluster.",
+            "Value": {
+                "Ref": "ECSCluster"
+            }
+        },
+        "ECSService": {
+            "Description": "The created service.",
+            "Value": {
+                "Ref": "ECSService"
+            }
+        },
+        "LoadBalancer": {
+            "Description": "The created load balancer.",
+            "Value": {
+                "Ref": "LoadBalancer"
+            }
+        },
+        "Listener": {
+            "Description": "The created listener.",
+            "Value": {
+                "Ref": "Listener"
+            }
+        },
+        "TargetGroup": {
+            "Description": "The created target group.",
+            "Value": {
+                "Ref": "TargetGroup"
+            }
+        }
+    }
+}
